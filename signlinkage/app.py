@@ -125,7 +125,7 @@ uploaded_file = st.file_uploader(
         help="Upload mp4, mov, or avi format"
     )
     
-    if uploaded_file is not None:
+if uploaded_file is not None:
         try:
             st.video(uploaded_file)
         except Exception as e:
