@@ -130,7 +130,7 @@ if uploaded_file is not None:
             st.video(uploaded_file)
         except Exception as e:
             st.error(f"Error loading video file / 影片載入失敗: {e}")
-    else:
+else:
         if lang_mode == "繁體中文":
             st.info("請上傳測試短片（例如含「八達通」、「收據」或「膠袋」手勢），系統將自動進行特徵分析。")
         else:
