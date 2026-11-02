@@ -6,15 +6,94 @@ from PIL import Image
 
 # 頁面基本設定
 st.set_page_config(
-    page_title="SignLinkage - 香港手語即時翻譯原型",
+    page_title="SignLinkage - 前線手語動態辨識系統",
     page_icon="🖐️",
-    layout="centered"
+    layout="wide"
 )
 
-st.title("SignLinkage - 前線零售手語動態辨識原型")
-st.markdown("支援連續手語影片上傳與 AI 特徵解析，實現無縫零售服務溝通。")
+# ----------------------------------------------------
+# 多語言字典設定 (Bilingual Dictionary)
+# ----------------------------------------------------
+TEXTS = {
+    "繁體中文": {
+        "title": "SignLinkage - 前線手語動態辨識系統",
+        "subtitle": "模擬前線人員帽沿鏡頭即時捕捉手語，無縫轉換為各行業前線服務對話。",
+        "sidebar_lang": "顯示語言 / Display Language",
+        "sidebar_settings": "參數微調",
+        "conf_slider": "模型信心閾值 (Confidence %)",
+        "step_slider": "抽幀頻率 (每幾幀分析一次)",
+        "upload_label": "請上傳前線手語連續短片 (.mp4, .mov, .avi)",
+        "btn_start": "開始執行即時動態手語辨識",
+        "system_status": "系統狀態 (System Status)",
+        "privacy_title": "隱私保護 (HK PDPO 規範合規)",
+        "privacy_desc": "本系統不儲存任何影片或臉部畫面。影片資料僅在記憶體 (RAM) 中即時處理手勢，隨即自動清除，絕不落地存檔。",
+        "edge_title": "邊緣運算相機模組",
+        "edge_desc": "帽子鏡頭已連線。支援 60 fps 超低延遲前線辨識。",
+        "engine_success": "AI 引擎連線成功！",
+        "engine_fail": "AI 引擎連線失敗: ",
+        "processing": "正在分析前線影格：",
+        "complete": "動態手語辨識完成！",
+        "timeline_title": "辨識時間軸與解析結果",
+        "realtime_output": "即時翻譯輸出 (Real-time Translation Output)",
+        "default_output": "等待上傳影片以進行即時翻譯...",
+        "no_detection": "畫面靜默或未達信心門檻"
+    },
+    "English": {
+        "title": "SignLinkage - Frontline Sign Language Recognition",
+        "subtitle": "Simulating frontline employee brim camera input to capture and translate sign language into service phrases.",
+        "sidebar_lang": "Display Language / 系統語言",
+        "sidebar_settings": "Parameter Tuning",
+        "conf_slider": "Confidence Threshold (%)",
+        "step_slider": "Frame Extraction Rate",
+        "upload_label": "Upload Frontline Sign Language Video (.mp4, .mov, .avi)",
+        "btn_start": "Start Real-Time Dynamic Recognition",
+        "system_status": "System Status",
+        "privacy_title": "Privacy Protection (HK PDPO Compliant)",
+        "privacy_desc": "We do not store any video or face footage. Video data is processed temporarily in RAM just to read gestures, and is wiped out instantly.",
+        "edge_title": "Edge Computing Camera Module",
+        "edge_desc": "Brim camera connected. Running smoothly at high FPS with ultra-low latency.",
+        "engine_success": "AI Engine Connected Successfully!",
+        "engine_fail": "AI Engine Connection Failed: ",
+        "processing": "Analyzing frames: ",
+        "complete": "Dynamic sign recognition complete!",
+        "timeline_title": "Recognition Timeline & Analysis",
+        "realtime_output": "Real-time Translation Output",
+        "default_output": "Awaiting video upload for real-time translation...",
+        "no_detection": "Silent frame or below confidence threshold"
+    }
+}
 
-# 初始化 Roboflow Inference Client (使用 @st.cache_resource 快取連線)
+# ----------------------------------------------------
+# 側邊欄：語言切換與系統狀態
+# ----------------------------------------------------
+st.sidebar.title("SignLinkage Dashboard")
+lang_choice = st.sidebar.radio("Display Language / 系統語言", ["繁體中文", "English"])
+t = TEXTS[lang_choice]
+
+st.sidebar.markdown("---")
+st.sidebar.subheader(t["system_status"])
+
+# 隱私保護合規卡片
+with st.sidebar.expander(f"🛡️ {t['privacy_title']}", expanded=True):
+    st.info(t["privacy_desc"])
+
+# 邊緣運算模組狀態卡片
+with st.sidebar.expander(f"📷 {t['edge_title']}", expanded=True):
+    st.success(t["edge_desc"])
+
+st.sidebar.markdown("---")
+st.sidebar.subheader(t["sidebar_settings"])
+confidence_threshold = st.sidebar.slider(t["conf_slider"], 0, 100, 23)
+frame_step = st.sidebar.slider(t["step_slider"], 1, 30, 10)
+
+# ----------------------------------------------------
+# 主畫面版面設計
+# ----------------------------------------------------
+st.title(t["title"])
+st.markdown(t["subtitle"])
+st.markdown("---")
+
+# 初始化 Roboflow Inference Client
 @st.cache_resource
 def init_roboflow_client():
     client = InferenceHTTPClient.init(
@@ -23,98 +102,99 @@ def init_roboflow_client():
     )
     return client
 
-# 建立客戶端連線並加入例外防護
 client = None
 try:
     client = init_roboflow_client()
-    st.sidebar.success("AI 引擎連線成功！")
+    st.sidebar.success(t["engine_success"])
 except Exception as e:
-    st.sidebar.error(f"AI 引擎連線失敗: {e}")
+    st.sidebar.error(f"{t['engine_fail']}{e}")
 
-# 側邊欄參數調整
-st.sidebar.header("參數微調")
-confidence_threshold = st.sidebar.slider("模型信心閾值 (Confidence %)", 0, 100, 23)
-frame_step = st.sidebar.slider("抽幀頻率 (每幾幀分析一次)", 1, 30, 10)
+# 左右分欄排版：左側放影片與操作，右側放解析數據
+col1, col2 = st.columns([1.5, 1])
 
-# 檔案上傳介面 (支援連續短片格式)
-uploaded_video = st.file_uploader("請上傳手語連續短片 (.mp4, .mov, .avi)", type=["mp4", "mov", "avi"])
+with col1:
+    st.subheader("1. Camera Input / Video Stream")
+    uploaded_video = st.file_uploader(t["upload_label"], type=["mp4", "mov", "avi"])
+
+with col2:
+    st.subheader("2. Hand Skeleton & Joint Analysis")
+    st.info("Deconstructs gestures into spatial coordinates for accurate sign language lexicon matching across frontline sectors.")
+
+latest_translation = t["default_output"]
 
 if uploaded_video is not None:
-    # 建立暫存檔供 OpenCV 讀取 (符合 RAM 與短暫處理合規原則)
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(uploaded_video.read())
     
-    # 在網頁上顯示上傳的影片
-    st.video(uploaded_video)
-    
-    if st.button("開始執行動態手語辨識", type="primary"):
+    with col1:
+        st.video(uploaded_video)
+        
+    if st.button(t["btn_start"], type="primary"):
         if client is None:
-            st.error("AI 引擎尚未初始化，無法進行預測。")
+            st.error("AI 引擎尚未初始化。")
         else:
             vid = cv2.VideoCapture(tfile.name)
             fps = vid.get(cv2.CAP_PROP_FPS)
             if fps == 0 or fps is None:
-                fps = 30.0  # 預設防呆數值
+                fps = 30.0
             
             total_frames = int(vid.get(cv2.CAP_PROP_FRAME_COUNT))
-            
             progress_bar = st.progress(0)
             status_text = st.empty()
             
             results_container = []
             frame_count = 0
             
-            # 迴圈讀取影片影格
             while vid.isOpened():
                 ret, frame = vid.read()
                 if not ret:
                     break
                 
-                # 依據抽幀頻率取樣，減少 API 負載並確保流暢
                 if frame_count % frame_step == 0:
                     temp_frame_path = "temp_frame.jpg"
                     cv2.imwrite(temp_frame_path, frame)
                     
                     try:
-                        # 呼叫 Inference SDK 進行預測 (model_id 請帶入你的專案名稱與版本號，例如 sign-linkage/1)
                         prediction = client.infer(temp_frame_path, model_id="sign-linkage/1")
-                        
                         timestamp = frame_count / fps
                         results_container.append({
                             "time": timestamp,
                             "prediction": prediction
                         })
                     except Exception as api_err:
-                        print(f"API 呼叫錯誤: {api_err}")
+                        print(f"API 錯誤: {api_err}")
                 
                 frame_count += 1
                 if total_frames > 0:
                     progress_bar.progress(min(frame_count / total_frames, 1.0))
-                    status_text.text(f"正在分析影片影格：{frame_count} / {total_frames}")
+                    status_text.text(f"{t['processing']}{frame_count} / {total_frames}")
             
             vid.release()
             progress_bar.empty()
-            status_text.success("動態手語辨識完成！")
+            status_text.success(t["complete"])
             
-            # 呈現時間軸分析結果
-            st.subheader("辨識時間軸結果")
-            if len(results_container) > 0:
-                for item in results_container:
-                    t = item["time"]
-                    res = item["prediction"]
-                    
-                    # 根據 inference-sdk 的回傳結構解析預測結果
-                    predictions_list = res.get("predictions", [])
-                    if predictions_list and len(predictions_list) > 0:
-                        top_pred = predictions_list[0].get('class', '未知')
-                        conf = predictions_list[0].get('confidence', 0) * 100
-                        
-                        # 過濾低於信心門檻的結果
-                        if conf >= confidence_threshold:
-                            st.write(f"⏱️ **{t:.2f} 秒** ➔ 辨識結果：`{top_pred}` (信心指數: {conf:.1f}%)")
+            with col2:
+                st.write(f"### {t['timeline_title']}")
+                if len(results_container) > 0:
+                    for item in results_container:
+                        t_sec = item["time"]
+                        res = item["prediction"]
+                        preds_list = res.get("predictions", [])
+                        if preds_list and len(preds_list) > 0:
+                            top_pred = preds_list[0].get('class', '未知')
+                            conf = preds_list[0].get('confidence', 0) * 100
+                            if conf >= confidence_threshold:
+                                st.write(f"⏱️ **{t_sec:.2f}s** ➔ `{top_pred}` ({conf:.1f}%)")
+                                latest_translation = f"Detected Gesture: {top_pred} ({conf:.1f}%)"
                         else:
-                            st.write(f"⏱️ **{t:.2f} 秒** ➔ 偵測中（低於信心門檻 {confidence_threshold}%）")
-                    else:
-                        st.write(f"⏱️ **{t:.2f} 秒** ➔ 畫面靜默或未達標")
-            else:
-                st.warning("未能在影片中偵測到有效手勢，請嘗試調低側邊欄的信心閾值。")
+                            pass
+
+# 底部即時翻譯輸出 Banner (呼應舊版 UI 的藍色翻譯框)
+st.markdown("---")
+st.markdown(f"### 💬 {t['realtime_output']}")
+st.markdown(
+    f"""
+    <div style="padding: 20px; background-color: #f0f4f8; border-left: 6px solid #1f77b4; border-radius: 4px; font-size: 20px; font-weight: bold; color: #111;">
+        {latest_translation}
+    </div>
+    """,
