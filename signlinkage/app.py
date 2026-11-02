@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import time
 
 # 頁面基本設定
 st.set_page_config(
@@ -11,7 +10,7 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# 多語言字典設定 (Bilingual Dictionary - 確保 Key 完整對應)
+# 多語言字典設定
 # ----------------------------------------------------
 TEXTS = {
     "繁體中文": {
@@ -29,11 +28,9 @@ TEXTS = {
         "joint_header": "2. Hand 3D Skeleton & Joint Analysis",
         "joint_desc": "Deconstructs gestures into 21 key spatial coordinates for accurate sign language lexicon matching.",
         "upload_label": "請上傳前線手語連續短片 (.mp4, .mov, .avi)",
-        "btn_start": "開始執行即時動態手語辨識",
         "timeline_title": "辨識時間軸與解析結果 (Recognition Timeline)",
         "realtime_output": "Real-time Translation Output",
-        "complete": "Sign recognition complete: Successfully translated and synced to customer display.",
-        "waiting": "請上傳影片並點擊「開始執行即時動態手語辨識」以啟動 AI 模型分析。"
+        "waiting": "請上傳影片以自動啟動 AI 模型分析與即時翻譯。"
     },
     "English": {
         "title": "SignLinkage - Sign Language Recognition",
@@ -50,11 +47,9 @@ TEXTS = {
         "joint_header": "2. Hand 3D Skeleton & Joint Analysis",
         "joint_desc": "Deconstructs gestures into 21 key spatial coordinates for accurate sign language lexicon matching.",
         "upload_label": "Upload Sign Language Video (.mp4, .mov, .avi)",
-        "btn_start": "Start Real-Time Dynamic Recognition",
         "timeline_title": "Recognition Timeline & Analysis",
         "realtime_output": "Real-time Translation Output",
-        "complete": "Sign recognition complete: Successfully translated and synced to customer display.",
-        "waiting": "Please upload a video and click start recognition to activate AI analysis."
+        "waiting": "Please upload a video to automatically trigger AI analysis and translation."
     }
 }
 
@@ -86,35 +81,17 @@ st.title(t["title"])
 st.caption(t["subtitle"])
 st.markdown("---")
 
-# 使用 Streamlit Session State 記錄是否已執行辨識
-if 'analyzed' not in st.session_state:
-    st.session_state['analyzed'] = False
-
 # 左右雙欄配置
 col1, col2 = st.columns([1.2, 1])
 
 with col1:
     st.subheader(t["input_header"])
     uploaded_video = st.file_uploader(t["upload_label"], type=["mp4", "mov", "avi"])
-    
-    if uploaded_video is not None:
-        st.video(uploaded_video)
-        # 當上傳新影片時重置分析狀態
-        if st.button(t["btn_start"], type="primary"):
-            with st.spinner("AI 正在解析動態手語與座標..."):
-                time.sleep(1.2)  # 模擬流暢的 AI 運算過場
-            st.session_state['analyzed'] = True
-            st.success(t["complete"])
-    else:
-        st.session_state['analyzed'] = False
 
 with col2:
     st.subheader(t["joint_header"])
-    
-    if st.session_state['analyzed'] and uploaded_video is not None:
+    if uploaded_video is not None:
         st.caption(t["joint_desc"])
-        
-        # 產生 21 個手部關節模擬數據
         joints = [
             "0. Wrist", "1. Thumb CMC", "2. Thumb MCP", "3. Thumb Tip",
             "4. Index MCP", "5. Index PIP", "6. Index DIP", "7. Index Tip",
@@ -135,12 +112,15 @@ with col2:
         st.info(t["waiting"])
 
 # ----------------------------------------------------
-# 辨識後才顯示的「會動的橫向 Timeline」與翻譯 Output
+# 自動偵測上傳並生成內容 (無需按 Start 按鈕)
 # ----------------------------------------------------
-if st.session_state['analyzed'] and uploaded_video is not None:
+if uploaded_video is not None:
+    with col1:
+        st.video(uploaded_video)
+    
     filename = uploaded_video.name.lower()
     
-    # 根據檔名決定生成內容
+    # 根據檔名自動生成對應句子與時間軸
     if "收據" in filename or "receipt" in filename:
         translated_text = "Do you need a printed receipt? / 請問需要列印收據嗎？"
         steps = [
@@ -164,9 +144,19 @@ if st.session_state['analyzed'] and uploaded_video is not None:
         ]
 
     st.markdown("---")
+    
+    # 1. Real-time Translation Output (互換後移至上方優先顯示)
+    html_banner = f"""
+    <div style="background-color: #e8f4f8; border: 1px solid #bce8f1; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
+        <div style="color: #31708f; font-size: 14px; font-weight: bold; margin-bottom: 6px;">Real-time Translation Output</div>
+        <div style="color: #004085; font-size: 24px; font-weight: bold;">{translated_text}</div>
+    </div>
+    """
+    st.markdown(html_banner, unsafe_allow_html=True)
+
+    # 2. Recognition Timeline (互換後移至下方展示動態橫向進度)
     st.markdown(f"### ⏱️ {t['timeline_title']}")
 
-    # 精美且會動的橫向 Timeline CSS 效果
     timeline_html = f"""
     <style>
     @keyframes pulse-glow {{
@@ -246,12 +236,3 @@ if st.session_state['analyzed'] and uploaded_video is not None:
     </div>
     """
     st.markdown(timeline_html, unsafe_allow_html=True)
-
-    # 底部藍色高質感即時翻譯輸出 Banner
-    html_banner = f"""
-    <div style="background-color: #e8f4f8; border: 1px solid #bce8f1; border-radius: 8px; padding: 20px; margin-top: 15px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
-        <div style="color: #31708f; font-size: 14px; font-weight: bold; margin-bottom: 6px;">Real-time Translation Output</div>
-        <div style="color: #004085; font-size: 24px; font-weight: bold;">{translated_text}</div>
-    </div>
-    """
-    st.markdown(html_banner, unsafe_allow_html=True)
