@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# 多語言字典設定
+# 多語言字典設定 (支援中英文完整切換)
 # ----------------------------------------------------
 TEXTS = {
     "繁體中文": {
@@ -30,7 +30,33 @@ TEXTS = {
         "upload_label": "請上傳前線手語連續短片 (.mp4, .mov, .avi)",
         "timeline_title": "辨識時間軸與解析結果 (Recognition Timeline)",
         "realtime_output": "Real-time Translation Output",
-        "waiting": "請上傳影片以自動啟動 AI 模型分析與即時翻譯。"
+        "waiting": "請上傳影片以自動啟動 AI 模型分析與即時翻譯。",
+        "conf_label": "信心指數",
+        # 檔案分類對應的中文翻譯與時間軸
+        "data_receipt": {
+            "translation": "請問需要列印收據嗎？",
+            "steps": [
+                ("0.5s", "動作解析: 準備手勢", "95.0%"),
+                ("1.2s", "特徵比對: 收據/Receipt", "96.8%"),
+                ("2.0s", "語意合成: 系統同步完成", "98.5%")
+            ]
+        },
+        "data_member": {
+            "translation": "請問要加入會員嗎？",
+            "steps": [
+                ("0.4s", "動作解析: 登記手勢", "96.2%"),
+                ("1.1s", "特徵比對: 會員/Member", "97.5%"),
+                ("2.2s", "語意合成: 建立檔案", "99.1%")
+            ]
+        },
+        "data_default": {
+            "translation": "歡迎光臨，請問有什麼可以幫您？",
+            "steps": [
+                ("0.5s", "動作解析: 準備手勢", "95.0%"),
+                ("1.2s", "特徵比對: 前線詞彙庫", "96.8%"),
+                ("2.0s", "語意合成: 系統同步完成", "98.5%")
+            ]
+        }
     },
     "English": {
         "title": "SignLinkage - Sign Language Recognition",
@@ -49,7 +75,33 @@ TEXTS = {
         "upload_label": "Upload Sign Language Video (.mp4, .mov, .avi)",
         "timeline_title": "Recognition Timeline & Analysis",
         "realtime_output": "Real-time Translation Output",
-        "waiting": "Please upload a video to automatically trigger AI analysis and translation."
+        "waiting": "Please upload a video to automatically trigger AI analysis and translation.",
+        "conf_label": "Confidence",
+        # 檔案分類對應的英文翻譯與時間軸
+        "data_receipt": {
+            "translation": "Do you need a printed receipt?",
+            "steps": [
+                ("0.5s", "Action Parsing: Preparing Gesture", "95.0%"),
+                ("1.2s", "Feature Matching: Receipt", "96.8%"),
+                ("2.0s", "Semantic Synthesis: Sync Complete", "98.5%")
+            ]
+        },
+        "data_member": {
+            "translation": "Would you like to join our membership?",
+            "steps": [
+                ("0.4s", "Action Parsing: Registration Gesture", "96.2%"),
+                ("1.1s", "Feature Matching: Member", "97.5%"),
+                ("2.2s", "Semantic Synthesis: Creating Profile", "99.1%")
+            ]
+        },
+        "data_default": {
+            "translation": "Welcome, how may I assist you today?",
+            "steps": [
+                ("0.5s", "Action Parsing: Preparing Gesture", "95.0%"),
+                ("1.2s", "Feature Matching: Lexicon Library", "96.8%"),
+                ("2.0s", "Semantic Synthesis: Sync Complete", "98.5%")
+            ]
+        }
     }
 }
 
@@ -112,7 +164,7 @@ with col2:
         st.info(t["waiting"])
 
 # ----------------------------------------------------
-# 自動偵測上傳並生成內容 (無需按 Start 按鈕)
+# 自動偵測上傳並生成對應語言的內容
 # ----------------------------------------------------
 if uploaded_video is not None:
     with col1:
@@ -120,32 +172,20 @@ if uploaded_video is not None:
     
     filename = uploaded_video.name.lower()
     
-    # 根據檔名自動生成對應句子與時間軸
+    # 根據檔名決定帶入哪個數據包
     if "收據" in filename or "receipt" in filename:
-        translated_text = "Do you need a printed receipt? / 請問需要列印收據嗎？"
-        steps = [
-            ("0.5s", "動作解析: 準備手勢", "95.0%"),
-            ("1.2s", "特徵比對: 收據/Receipt", "96.8%"),
-            ("2.0s", "語意合成: 系統同步完成", "98.5%")
-        ]
+        data_key = "data_receipt"
     elif "會員" in filename or "member" in filename:
-        translated_text = "Would you like to join our membership? / 請問要加入會員嗎？"
-        steps = [
-            ("0.4s", "動作解析: 登記手勢", "96.2%"),
-            ("1.1s", "特徵比對: 會員/Member", "97.5%"),
-            ("2.2s", "語意合成: 建立檔案", "99.1%")
-        ]
+        data_key = "data_member"
     else:
-        translated_text = f"Frontline Translation ({uploaded_video.name}): Welcome, how may I assist you?"
-        steps = [
-            ("0.5s", "動作解析: 準備手勢", "95.0%"),
-            ("1.2s", "特徵比對: 前線詞彙庫", "96.8%"),
-            ("2.0s", "語意合成: 系統同步完成", "98.5%")
-        ]
+        data_key = "data_default"
+
+    translated_text = t[data_key]["translation"]
+    steps = t[data_key]["steps"]
 
     st.markdown("---")
     
-    # 1. Real-time Translation Output (互換後移至上方優先顯示)
+    # 1. Real-time Translation Output (上方藍色輸出框)
     html_banner = f"""
     <div style="background-color: #e8f4f8; border: 1px solid #bce8f1; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
         <div style="color: #31708f; font-size: 14px; font-weight: bold; margin-bottom: 6px;">Real-time Translation Output</div>
@@ -154,7 +194,7 @@ if uploaded_video is not None:
     """
     st.markdown(html_banner, unsafe_allow_html=True)
 
-    # 2. Recognition Timeline (互換後移至下方展示動態橫向進度)
+    # 2. Recognition Timeline (下方橫向動態時間軸)
     st.markdown(f"### ⏱️ {t['timeline_title']}")
 
     timeline_html = f"""
@@ -217,21 +257,21 @@ if uploaded_video is not None:
             <div class="timeline-badge">1</div>
             <div class="timeline-time">{steps[0][0]}</div>
             <div class="timeline-desc">{steps[0][1]}</div>
-            <div class="timeline-conf">信心指數: {steps[0][2]}</div>
+            <div class="timeline-conf">{t["conf_label"]}: {steps[0][2]}</div>
         </div>
         <div style="flex-grow: 1; height: 3px; background: #1f77b4; margin: 0 10px; margin-bottom: 30px;"></div>
         <div class="timeline-step">
             <div class="timeline-badge">2</div>
             <div class="timeline-time">{steps[1][0]}</div>
             <div class="timeline-desc">{steps[1][1]}</div>
-            <div class="timeline-conf">信心指數: {steps[1][2]}</div>
+            <div class="timeline-conf">{t["conf_label"]}: {steps[1][2]}</div>
         </div>
         <div style="flex-grow: 1; height: 3px; background: #1f77b4; margin: 0 10px; margin-bottom: 30px;"></div>
         <div class="timeline-step">
             <div class="timeline-badge">3</div>
             <div class="timeline-time">{steps[2][0]}</div>
             <div class="timeline-desc">{steps[2][1]}</div>
-            <div class="timeline-conf">信心指數: {steps[2][2]}</div>
+            <div class="timeline-conf">{t["conf_label"]}: {steps[2][2]}</div>
         </div>
     </div>
     """
