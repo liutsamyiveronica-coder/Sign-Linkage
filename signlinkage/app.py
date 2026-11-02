@@ -192,9 +192,11 @@ if uploaded_video is not None:
 # 底部即時翻譯輸出 Banner (呼應舊版 UI 的藍色翻譯框)
 st.markdown("---")
 st.markdown(f"### 💬 {t['realtime_output']}")
-st.markdown(
-    f"""
-    <div style="padding: 20px; background-color: #f0f4f8; border-left: 6px solid #1f77b4; border-radius: 4px; font-size: 20px; font-weight: bold; color: #111;">
-        {latest_translation}
-    </div>
-    """,
+
+# 將 HTML 內容獨立出來，避免多行 f-string 括號解析錯誤
+html_banner = f"""
+<div style="padding: 20px; background-color: #f0f4f8; border-left: 6px solid #1f77b4; border-radius: 4px; font-size: 20px; font-weight: bold; color: #111;">
+    {latest_translation}
+</div>
+"""
+st.markdown(html_banner, unsafe_allow_html=True)
