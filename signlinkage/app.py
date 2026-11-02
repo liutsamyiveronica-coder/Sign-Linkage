@@ -1,217 +1,120 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-import time
+import cv2
+import tempfile
+from inference_sdk import InferenceHTTPClient
+from PIL import Image
 
-# --- 1. 頁面基本設定 ---
+# 頁面基本設定
 st.set_page_config(
-    page_title="SignLinkage Enterprise - Sign Language Recognition", 
-    page_icon="👋", 
-    layout="wide"
+    page_title="SignLinkage - 香港手語即時翻譯原型",
+    page_icon="🖐️",
+    layout="centered"
 )
 
-# 自訂高科技質感樣式
-st.markdown("""
-    <style>
-    .main { background-color: #fafafa; }
-    .stAlert { border-radius: 8px; }
-    .stDataFrame { border-radius: 8px; }
-    .translation-box {
-        padding: 24px; 
-        border-radius: 8px; 
-        background-color: #f0f4f9; 
-        border-left: 6px solid #1a73e8; 
-        margin-top: 10px;
-    }
-    </style>
-""", unsafe_allow_html=True)
+st.title("SignLinkage - 前線零售手語動態辨識原型")
+st.markdown("支援連續手語影片上傳與 AI 特徵解析，實現無縫零售服務溝通。")
 
-# --- 2. 快取與資料處理函式 (Performance & Security) ---
-@st.cache_data
-def get_joint_names(lang_mode: str) -> list:
-    """快取 21 個關鍵骨架關節名稱，避免重複建構"""
-    if lang_mode == "繁體中文":
-        return [
-            "0. 手腕 (Wrist)", "1. 拇指根部 (Thumb CMC)", "2. 拇指關節 (Thumb MCP)", "3. 拇指指尖 (Thumb Tip)",
-            "4. 食指根部 (Index MCP)", "5. 食指關節 (Index PIP)", "6. 食指指尖 (Index Tip)",
-            "7. 中指根部 (Middle MCP)", "8. 中指關節 (Middle PIP)", "9. 中指指尖 (Middle Tip)",
-            "10. 無名指根部 (Ring MCP)", "11. 無名指關節 (Ring PIP)", "12. 無名指指尖 (Ring Tip)",
-            "13. 小指根部 (Pinky MCP)", "14. 小指關節 (Pinky PIP)", "15. 小指指尖 (Pinky Tip)",
-            "16. 手掌中心 (Palm Center)", "17. 掌骨節點 A", "18. 掌骨節點 B", "19. 掌骨節點 C", "20. 掌骨節點 D"
-        ]
-    return [
-        "0. Wrist", "1. Thumb CMC", "2. Thumb MCP", "3. Thumb Tip",
-        "4. Index MCP", "5. Index PIP", "6. Index Tip",
-        "7. Middle MCP", "8. Middle PIP", "9. Middle Tip",
-        "10. Ring MCP", "11. Ring PIP", "12. Ring Tip",
-        "13. Pinky MCP", "14. Pinky PIP", "15. Pinky Tip",
-        "16. Palm Center", "17. Metacarpal A", "18. Metacarpal B", "19. Metacarpal C", "20. Metacarpal D"
-    ]
-
-@st.cache_data
-def generate_skeleton_coordinates(file_name: str, seed: int, lang_mode: str) -> tuple:
-    """根據輸入影片產生並快取 3D 骨架座標數據"""
-    np.random.seed(seed)
-    joint_names = get_joint_names(lang_mode)
-    
-    if lang_mode == "繁體中文":
-        col_names = {
-            "joint": "關節點名稱 (Joint)",
-            "x": "X軸 (水平位置)",
-            "y": "Y軸 (垂直位置)",
-            "z": "Z軸 (景深位置)"
-        }
-    else:
-        col_names = {
-            "joint": "Joint Name",
-            "x": "X-Axis (Horizontal)",
-            "y": "Y-Axis (Vertical)",
-            "z": "Z-Axis (Depth)"
-        }
-        
-    df = pd.DataFrame({
-        col_names["joint"]: joint_names,
-        col_names["x"]: np.random.uniform(0.25, 0.75, 21).round(4),
-        col_names["y"]: np.random.uniform(0.15, 0.85, 21).round(4),
-        col_names["z"]: np.random.uniform(-0.15, 0.15, 21).round(4)
-    })
-    return df, col_names
-
-# --- 3. 側邊欄：系統狀態與合規指標 ---
-with st.sidebar:
-    st.title("SignLinkage Dashboard")
-    st.markdown("---")
-    
-    lang_mode = st.radio("Display Language / 系統語言", ["繁體中文", "English"], index=0)
-    
-    st.markdown("---")
-    st.markdown("### System Status")
-    
-    st.info(
-        "**Privacy Protection (HK PDPO Compliant)**\n\n"
-        "We do not store any video or face footage. "
-        "Video data is processed temporarily in live memory (RAM) just to read hand gestures, "
-        "and is wiped out instantly. Nothing is saved to a hard drive."
+# 初始化 Roboflow Inference Client (使用 @st.cache_resource 快取連線)
+@st.cache_resource
+def init_roboflow_client():
+    client = InferenceHTTPClient.init(
+        api_url="https://serverless.roboflow.com",
+        api_key="rf_2bFNcWYta0lJXQLZMBhS3CUILj1"  # 你的 Publishable API Key
     )
-    st.success(
-        "**Edge Computing Camera Module**\n\n"
-        "Brim camera connected. Running smoothly at 60 frames per second (FPS) "
-        "with ultra-low latency under 25 milliseconds."
-    )
+    return client
 
-# --- 4. 核心主畫面：手語識別 (雙語動態支援) ---
-if lang_mode == "繁體中文":
-    st.header("手語識別 (Sign Language Recognition)")
-    st.markdown("模擬前線員工配戴之帽檐廣角鏡頭輸入，實時捕捉手勢特徵並轉譯為零售服務語句。")
-else:
-    st.header("Sign Language Recognition")
-    st.markdown("Simulating frontline employee brim camera input to capture hand gestures in real-time and translate them into retail service phrases.")
+# 建立客戶端連線並加入例外防護
+client = None
+try:
+    client = init_roboflow_client()
+    st.sidebar.success("AI 引擎連線成功！")
+except Exception as e:
+    st.sidebar.error(f"AI 引擎連線失敗: {e}")
 
-st.markdown("---")
+# 側邊欄參數調整
+st.sidebar.header("參數微調")
+confidence_threshold = st.sidebar.slider("模型信心閾值 (Confidence %)", 0, 100, 23)
+frame_step = st.sidebar.slider("抽幀頻率 (每幾幀分析一次)", 1, 30, 10)
 
-# 雙欄佈局
-col_video, col_data = st.columns([1, 1], gap="large")
+# 檔案上傳介面 (支援連續短片格式)
+uploaded_video = st.file_uploader("請上傳手語連續短片 (.mp4, .mov, .avi)", type=["mp4", "mov", "avi"])
 
-with col_video:
-    if lang_mode == "繁體中文":
-        st.subheader("1. 鏡頭影像輸入 (Camera Input)")
-    else:
-        st.subheader("1. Camera Input")
-        
-uploaded_file = st.file_uploader(
-        "Upload video file", 
-        type=["mp4", "mov", "avi"], 
-        label_visibility="collapsed",
-        help="Upload mp4, mov, or avi format"
-    )
+if uploaded_video is not None:
+    # 建立暫存檔供 OpenCV 讀取 (符合 RAM 與短暫處理合規原則)
+    tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+    tfile.write(uploaded_video.read())
     
-if uploaded_file is not None:
-        try:
-            st.video(uploaded_file)
-        except Exception as e:
-            st.error(f"Error loading video file / 影片載入失敗: {e}")
-else:
-        if lang_mode == "繁體中文":
-            st.info("請上傳測試短片（例如含「八達通」、「收據」或「膠袋」手勢），系統將自動進行特徵分析。")
-        else:
-            st.info("Please upload a test video (e.g., gestures for Octopus card, receipt, or plastic bag) to trigger automated analysis.")
-
-with col_data:
-    if lang_mode == "繁體中文":
-        st.subheader("2. 手勢 3D 骨架關節特徵分析")
-        st.caption("將手勢解構為 21 個關鍵空間座標，作為手語詞庫比對之精準依據。")
-    else:
-        st.subheader("2. Hand 3D Skeleton & Joint Analysis")
-        st.caption("Deconstructs gestures into 21 key spatial coordinates for accurate sign language lexicon matching.")
-        
-    if uploaded_file is not None:
-        try:
-            # 以檔名長度及固定基數生成範例座標
-            seed_val = (len(uploaded_file.name) + 42) % 1000
-            landmark_df, col_names = generate_skeleton_coordinates(uploaded_file.name, seed_val, lang_mode)
-            
-            # 展示 3D 座標 DataFrame
-            st.dataframe(landmark_df, use_container_width=True, height=180)
-            
-            # 展現 X/Y 關節空間散佈圖
-            chart_data = pd.DataFrame({
-                col_names["x"]: landmark_df[col_names["x"]],
-                col_names["y"]: landmark_df[col_names["y"]]
-            })
-            st.scatter_chart(chart_data, use_container_width=True, height=160)
-        except Exception as e:
-            st.error(f"Feature extraction error / 特徵擷取異常: {e}")
-    else:
-        if lang_mode == "繁體中文":
-            st.warning("等待影像輸入以擷取特徵數據...")
-        else:
-            st.warning("Awaiting video input to extract joint features...")
-
-st.markdown("---")
-
-# --- 5. 自動識別與轉譯結果 ---
-if uploaded_file is not None:
-    spinner_text = "系統正在計算手勢特徵並匹配香港手語 (HKSL) 詞庫..." if lang_mode == "繁體中文" else "Processing gesture features and matching HKSL lexicon..."
+    # 在網頁上顯示上傳的影片
+    st.video(uploaded_video)
     
-    with st.spinner(spinner_text):
-        time.sleep(0.3)
-        
-    try:
-        fname = uploaded_file.name.lower()
-        if "八達通" in fname or "octopus" in fname:
-            zh_res = "請拍八達通或請付款"
-            en_res = "Please tap your Octopus card."
-            confidence = "98.4%"
-        elif "收據" in fname or "receipt" in fname:
-            zh_res = "請問需要列印收據嗎？"
-            en_res = "Do you need a printed receipt?"
-            confidence = "97.1%"
+    if st.button("開始執行動態手語辨識", type="primary"):
+        if client is None:
+            st.error("AI 引擎尚未初始化，無法進行預測。")
         else:
-            zh_res = "請問需要膠袋嗎？"
-            en_res = "Do you need a plastic bag?"
-            confidence = "96.5%"
+            vid = cv2.VideoCapture(tfile.name)
+            fps = vid.get(cv2.CAP_PROP_FPS)
+            if fps == 0 or fps is None:
+                fps = 30.0  # 預設防呆數值
             
-        final_output = zh_res if lang_mode == "繁體中文" else en_res
-        
-        success_msg = "手語辨識完成：已成功轉譯並同步至顧客面向屏幕。" if lang_mode == "繁體中文" else "Sign recognition complete: Successfully translated and synced to customer display."
-        st.success(success_msg)
-        
-        label_text = "實時轉譯結果 (Real-time Translation Output)" if lang_mode == "繁體中文" else "Real-time Translation Output"
-        conf_label = "模型信心指數 (Confidence):" if lang_mode == "繁體中文" else "Model Confidence:"
-        
-        st.markdown(
-            f"""
-            <div class="translation-box">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="color: #5f6368; font-size: 14px; font-weight: 600;">{label_text}</span>
-                    <span style="color: #137333; font-size: 13px; font-weight: 600; background: #e6f4ea; padding: 2px 8px; border-radius: 4px;">{conf_label} {confidence}</span>
-                </div>
-                <h2 style="color: #1a73e8; margin: 12px 0 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 26px;">
-                    {final_output}
-                </h2>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    except Exception as e:
-        st.error(f"Inference process error / 轉譯運算過程出錯: {e}")
+            total_frames = int(vid.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            results_container = []
+            frame_count = 0
+            
+            # 迴圈讀取影片影格
+            while vid.isOpened():
+                ret, frame = vid.read()
+                if not ret:
+                    break
+                
+                # 依據抽幀頻率取樣，減少 API 負載並確保流暢
+                if frame_count % frame_step == 0:
+                    temp_frame_path = "temp_frame.jpg"
+                    cv2.imwrite(temp_frame_path, frame)
+                    
+                    try:
+                        # 呼叫 Inference SDK 進行預測 (model_id 請帶入你的專案名稱與版本號，例如 sign-linkage/1)
+                        prediction = client.infer(temp_frame_path, model_id="sign-linkage/1")
+                        
+                        timestamp = frame_count / fps
+                        results_container.append({
+                            "time": timestamp,
+                            "prediction": prediction
+                        })
+                    except Exception as api_err:
+                        print(f"API 呼叫錯誤: {api_err}")
+                
+                frame_count += 1
+                if total_frames > 0:
+                    progress_bar.progress(min(frame_count / total_frames, 1.0))
+                    status_text.text(f"正在分析影片影格：{frame_count} / {total_frames}")
+            
+            vid.release()
+            progress_bar.empty()
+            status_text.success("動態手語辨識完成！")
+            
+            # 呈現時間軸分析結果
+            st.subheader("辨識時間軸結果")
+            if len(results_container) > 0:
+                for item in results_container:
+                    t = item["time"]
+                    res = item["prediction"]
+                    
+                    # 根據 inference-sdk 的回傳結構解析預測結果
+                    predictions_list = res.get("predictions", [])
+                    if predictions_list and len(predictions_list) > 0:
+                        top_pred = predictions_list[0].get('class', '未知')
+                        conf = predictions_list[0].get('confidence', 0) * 100
+                        
+                        # 過濾低於信心門檻的結果
+                        if conf >= confidence_threshold:
+                            st.write(f"⏱️ **{t:.2f} 秒** ➔ 辨識結果：`{top_pred}` (信心指數: {conf:.1f}%)")
+                        else:
+                            st.write(f"⏱️ **{t:.2f} 秒** ➔ 偵測中（低於信心門檻 {confidence_threshold}%）")
+                    else:
+                        st.write(f"⏱️ **{t:.2f} 秒** ➔ 畫面靜默或未達標")
+            else:
+                st.warning("未能在影片中偵測到有效手勢，請嘗試調低側邊欄的信心閾值。")
